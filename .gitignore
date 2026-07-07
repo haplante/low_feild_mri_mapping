@@ -1,0 +1,4 @@
+# Real scanner data — keep out of the public repo (synthetic samples in data/ are fine)
+data/ERNIE2_DSV40_RES6_S01.xlsx
+data/RATSCANNER_DSV60_RES8_S01.xlsx
+old

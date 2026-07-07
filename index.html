@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Low-Field MRI · B₀ Field Mapping Dashboard</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --page:#0d0d0d; --surface:#1a1a19; --surface-2:#222221; --surface-3:#2a2a29;
+    --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,0.10);
+    --s1:#3987e5; --s2:#199e70; --s3:#c98500; --s6:#e66767;
+    --good:#0ca30c; --crit:#d03b3b;
+    --pad:14px; --rad:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    display:flex; flex-direction:column; overflow:hidden; font-size:14px;
+  }
+  /* ---------- header ---------- */
+  header{
+    flex:0 0 auto; display:flex; align-items:center; gap:16px;
+    padding:12px 18px 10px; border-bottom:1px solid var(--border);
+  }
+  header .logo{
+    width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1c5cab,#3987e5);
+    display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;
+  }
+  header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sub{font-size:12px;color:var(--ink-3);margin-top:1px}
+  header .spacer{flex:1}
+  .seg{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .seg button{
+    background:transparent;color:var(--ink-2);border:none;padding:6px 13px;cursor:pointer;
+    font-size:12.5px;font-family:inherit;
+  }
+  .seg button:hover{background:var(--surface-3);color:var(--ink)}
+  .seg button.on{background:var(--s1);color:#fff}
+  /* ---------- app layout ---------- */
+  #app{flex:1 1 auto;min-height:0;display:flex;gap:var(--pad);padding:var(--pad)}
+  #sidebar{
+    width:272px;flex:0 0 272px;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--rad);padding:14px;overflow-y:auto;
+  }
+  #main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:var(--pad)}
+  /* ---------- sidebar ---------- */
+  #sidebar h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-3);font-weight:650}
+  #drop{
+    border:1.5px dashed var(--baseline);border-radius:8px;padding:16px 10px;text-align:center;
+    color:var(--ink-3);font-size:12px;cursor:pointer;transition:all .15s;line-height:1.5;
+  }
+  #drop:hover,#drop.over{border-color:var(--s1);color:var(--ink-2);background:rgba(57,135,229,.06)}
+  #drop b{color:var(--s1);font-weight:600}
+  #demoBtn{
+    display:none;width:100%;margin-top:8px;background:var(--surface-2);color:var(--ink-2);
+    border:1px solid var(--border);border-radius:7px;padding:7px;cursor:pointer;font-size:12px;font-family:inherit;
+  }
+  #demoBtn:hover{background:var(--surface-3);color:var(--ink)}
+  .scannerGroup{margin-top:12px}
+  .scannerGroup .gname{
+    font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.6px;
+    margin:0 0 4px 2px;display:flex;align-items:center;gap:6px;
+  }
+  .gname .pairBadge{
+    font-size:10px;color:var(--s2);border:1px solid rgba(25,158,112,.45);
+    padding:0 5px;border-radius:9px;text-transform:none;letter-spacing:0;
+  }
+  .dsItem{
+    display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;
+    border:1px solid transparent;margin-bottom:3px;
+  }
+  .dsItem:hover{background:var(--surface-2)}
+  .dsItem.active{background:rgba(57,135,229,.13);border-color:rgba(57,135,229,.5)}
+  .dsItem .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px;background:var(--baseline)}
+  .dsItem.active .dot{background:var(--s1)}
+  .dsItem .nm{flex:1;min-width:0}
+  .dsItem .nm .t{font-size:12.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dsItem .nm .d{font-size:11px;color:var(--ink-3)}
+  .dsItem .rm{
+    background:none;border:none;color:var(--ink-3);cursor:pointer;font-size:14px;
+    padding:2px 5px;border-radius:5px;line-height:1;
+  }
+  .dsItem .rm:hover{color:var(--s6);background:var(--surface-3)}
+  .sephr{border:none;border-top:1px solid var(--border);margin:14px 0 12px}
+  .opt{margin-bottom:11px}
+  .opt label.lbl{display:block;font-size:11.5px;color:var(--ink-3);margin-bottom:4px}
+  .opt select,.opt input[type=number]{
+    width:100%;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);
+    border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:inherit;
+  }
+  .opt input[type=range]{width:100%;accent-color:var(--s1)}
+  .optrow{display:flex;gap:8px}
+  .optrow .opt{flex:1}
+  .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);margin-bottom:8px;cursor:pointer}
+  .chk input{accent-color:var(--s1);cursor:pointer}
+  .empty{color:var(--ink-3);font-size:12px;text-align:center;padding:14px 6px;line-height:1.5}
+  /* ---------- stat tiles ---------- */
+  #tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--pad);flex:0 0 auto}
+  .tile{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--rad);
+    padding:11px 14px 10px;min-width:0;
+  }
+  .tile .v{font-size:21px;font-weight:650;letter-spacing:-.3px;white-space:nowrap}
+  .tile .v small{font-size:12px;color:var(--ink-3);font-weight:500;margin-left:3px}
+  .tile .l{font-size:11px;color:var(--ink-3);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+  .tile.hl .v{color:var(--s1)}
+  /* ---------- panels grid ---------- */
+  .grid{flex:1 1 auto;min-height:0;display:grid;gap:var(--pad)}
+  #gridMap{grid-template-columns:11fr 9fr;grid-template-rows:1fr 1fr;grid-template-areas:"p3d p2d" "p3d phist"}
+  #gridCmp{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+  .panel{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--rad);
+    min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;
+  }
+  .panel .phead{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:9px 12px 0;font-size:12.5px;color:var(--ink-2);font-weight:600;
+  }
+  .phead .spacer{flex:1}
+  .phead select{
+    background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border);
+    border-radius:6px;padding:3px 6px;font-size:11.5px;font-family:inherit;
+  }
+  .phead .slicelbl{font-size:11px;color:var(--ink-3);font-weight:500;white-space:nowrap}
+  .phead input[type=range]{width:110px;accent-color:var(--s1)}
+  .plot{flex:1 1 auto;min-height:0}
+  /* ---------- stats tab ---------- */
+  #tabStats{flex-direction:column}
+  #gridStats{grid-template-columns:1fr 1fr;grid-template-rows:minmax(0,45%) minmax(0,1fr);grid-template-areas:"tbl tbl" "phom pbox"}
+  #statTableWrap{grid-area:tbl;height:100%}
+  #statScroll{flex:1 1 auto;min-height:0;overflow:auto}
+  #panelHom{grid-area:phom}#panelBox{grid-area:pbox}
+  table.stats{border-collapse:collapse;width:100%;font-size:12.5px}
+  table.stats th{
+    position:sticky;top:0;background:var(--surface);z-index:2;
+    font-size:10.5px;color:var(--ink-3);letter-spacing:.4px;
+    padding:9px 10px 7px;text-align:right;border-bottom:1px solid var(--baseline);white-space:nowrap;
+  }
+  table.stats th:first-child,table.stats td:first-child{text-align:left}
+  table.stats td{
+    padding:6px 10px;text-align:right;border-bottom:1px solid var(--grid);
+    font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap;
+  }
+  table.stats td.nm{color:var(--ink);font-weight:550}
+  table.stats tr{cursor:pointer}
+  table.stats tr:hover td{background:var(--surface-2)}
+  table.stats tr.sel td{background:rgba(57,135,229,.13)}
+  table.stats tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--s1)}
+  .tblbar{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
+  .tblbar .ttl{font-size:12.5px;font-weight:600;color:var(--ink-2)}
+  .tblbar button{
+    background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border);border-radius:6px;
+    padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:inherit;
+  }
+  .tblbar button:hover{background:var(--surface-3);color:var(--ink)}
+  /* ---------- compare tab ---------- */
+  #cmpBar{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--rad);padding:10px 14px;flex-wrap:wrap;
+  }
+  #cmpBar .swatch{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
+  #cmpBar label{font-size:12px;color:var(--ink-3)}
+  #cmpBar select{
+    background:var(--surface-2);color:var(--ink);border:1px solid var(--border);border-radius:7px;
+    padding:6px 8px;font-size:12.5px;font-family:inherit;max-width:250px;
+  }
+  #cmpBar button{
+    background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border);border-radius:7px;
+    padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;
+  }
+  #cmpBar button:hover{background:var(--surface-3);color:var(--ink)}
+  #cmpStats{display:flex;gap:18px;flex-wrap:wrap;margin-left:auto}
+  #cmpStats .cs{text-align:right}
+  #cmpStats .cs .v{font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
+  #cmpStats .cs .l{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.4px}
+  .tabpane{display:none;flex:1 1 auto;min-height:0}
+  .tabpane.on{display:flex;flex-direction:column;gap:var(--pad)}
+  #bigEmpty{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    color:var(--ink-3);font-size:14px;text-align:center;line-height:1.7;
+  }
+  #bigEmpty .ic{font-size:40px;opacity:.6}
+  code{background:var(--surface-2);padding:1px 6px;border-radius:4px;font-size:12px;color:var(--s2)}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:var(--baseline);border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">B₀</div>
+  <div>
+    <h1>Low-Field MRI Field Mapping</h1>
+    <div class="sub" id="subTitle">drop .xlsx field maps to begin</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="seg" id="unitSeg">
+    <button data-u="mT" class="on">mT</button>
+    <button data-u="uT">µT</button>
+    <button data-u="ppm">ppm</button>
+    <button data-u="MHz">MHz</button>
+  </div>
+  <div class="seg" id="tabSeg">
+    <button data-tab="map" class="on">Field map</button>
+    <button data-tab="stats">Statistics</button>
+    <button data-tab="cmp">Scan–Rescan</button>
+  </div>
+</header>
+
+<div id="app">
+  <aside id="sidebar">
+    <h3>Datasets</h3>
+    <div id="drop">
+      <div><b>Drop .xlsx files</b> here<br>or click to browse</div>
+      <div style="margin-top:6px;font-size:10.5px">name as <span style="color:var(--ink-2)">SCANNER_DSV60_RES8_S01.xlsx</span><br>for automatic grouping &amp; rescan pairing</div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none">
+    <button id="demoBtn">⚡ Load all sample data</button>
+    <div id="dsList"><div class="empty">No datasets loaded yet</div></div>
+
+    <hr class="sephr">
+    <h3>Display options</h3>
+    <div class="opt">
+      <label class="lbl">Colour scale</label>
+      <select id="optCscale">
+        <option value="brandblue" selected>Blue (sequential)</option>
+        <option value="Viridis">Viridis</option>
+        <option value="Cividis">Cividis</option>
+        <option value="Plasma">Plasma</option>
+        <option value="Magma">Magma</option>
+      </select>
+    </div>
+    <div class="opt">
+      <label class="lbl">3D rendering</label>
+      <select id="opt3d">
+        <option value="points" selected>Measured points</option>
+        <option value="iso">Isosurface shells</option>
+        <option value="slices">Orthogonal slice planes</option>
+      </select>
+    </div>
+    <div class="opt">
+      <label class="lbl">2D slice rendering</label>
+      <select id="opt2d">
+        <option value="heat" selected>Interpolated heatmap</option>
+        <option value="contour">Contour map</option>
+        <option value="scatter">Measured points</option>
+      </select>
+    </div>
+    <div class="opt">
+      <label class="lbl">Colour range clip (percentile) <span id="clipVal" style="color:var(--ink-2)">0–100 %</span></label>
+      <input type="range" id="optClip" min="0" max="10" step="0.5" value="0">
+    </div>
+    <div class="opt">
+      <label class="lbl">3D marker size <span id="mkVal" style="color:var(--ink-2)">5</span></label>
+      <input type="range" id="optMarker" min="2" max="12" step="1" value="5">
+    </div>
+    <label class="chk"><input type="checkbox" id="optSphere" checked> Show DSV sphere</label>
+    <label class="chk"><input type="checkbox" id="optSlice3d" checked> Show 2D slice plane in 3D</label>
+    <label class="chk"><input type="checkbox" id="optTraj"> Show mapping trajectory (3D)</label>
+    <label class="chk"><input type="checkbox" id="optTraj2d"> Show mapping trajectory (2D slice)</label>
+    <label class="chk"><input type="checkbox" id="optGauss" checked> Gaussian fit overlay</label>
+    <label class="chk"><input type="checkbox" id="optPts2d"> Overlay measured points on 2D map</label>
+  </aside>
+
+  <main id="main">
+    <!-- ============ FIELD MAP TAB ============ -->
+    <div class="tabpane on" id="tabMap">
+      <div id="tiles"></div>
+      <div class="grid" id="gridMap">
+        <div class="panel" style="grid-area:p3d">
+          <div class="phead">3D field map <span class="spacer"></span><span class="slicelbl" id="lbl3d"></span></div>
+          <div class="plot" id="plot3d"></div>
+        </div>
+        <div class="panel" style="grid-area:p2d">
+          <div class="phead">
+            2D slice
+            <select id="sliceAxis">
+              <option value="z" selected>axial (XY, slice in z)</option>
+              <option value="y">coronal (XZ, slice in y)</option>
+              <option value="x">sagittal (YZ, slice in x)</option>
+            </select>
+            <span class="spacer"></span>
+            <span class="slicelbl" id="sliceLbl"></span>
+            <input type="range" id="sliceIdx" min="0" max="0" step="1" value="0">
+          </div>
+          <div class="plot" id="plot2d"></div>
+        </div>
+        <div class="panel" style="grid-area:phist">
+          <div class="phead">Field distribution <span class="spacer"></span><span class="slicelbl" id="gaussLbl"></span></div>
+          <div class="plot" id="plotHist"></div>
+        </div>
+      </div>
+      <div id="bigEmpty" style="display:none">
+        <div class="ic">🧲</div>
+        <div><b>No field map loaded</b><br>
+        Drop one or more <code>.xlsx</code> robot field maps on the left panel.<br>
+        Expected columns: <code>x</code>, <code>y</code>, <code>z</code> (mm) and <code>B</code> (T).</div>
+      </div>
+    </div>
+
+    <!-- ============ STATISTICS TAB ============ -->
+    <div class="tabpane" id="tabStats">
+      <div class="grid" id="gridStats">
+        <div class="panel" id="statTableWrap">
+          <div class="tblbar">
+            <span class="ttl">Homogeneity statistics — all loaded datasets</span>
+            <span class="spacer" style="flex:1"></span>
+            <button id="csvBtn">⬇ Export CSV</button>
+          </div>
+          <div id="statScroll">
+            <table class="stats" id="statTable"></table>
+          </div>
+        </div>
+        <div class="panel" id="panelHom">
+          <div class="phead">Homogeneity vs DSV diameter — <span id="homName" style="color:var(--s1)">&nbsp;</span></div>
+          <div class="plot" id="plotHom"></div>
+        </div>
+        <div class="panel" id="panelBox">
+          <div class="phead">Field deviation from mean, per dataset (ppm)</div>
+          <div class="plot" id="plotBox"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ COMPARE TAB ============ -->
+    <div class="tabpane" id="tabCmp">
+      <div id="cmpBar">
+        <span class="swatch" style="background:var(--s1)"></span><label>Scan A</label>
+        <select id="cmpA"></select>
+        <span class="swatch" style="background:var(--s2)"></span><label>Scan B</label>
+        <select id="cmpB"></select>
+        <button id="autoPair">⇄ Auto-pair rescan</button>
+        <div id="cmpStats"></div>
+      </div>
+      <div class="grid" id="gridCmp">
+        <div class="panel">
+          <div class="phead">Bland–Altman (matched points)</div>
+          <div class="plot" id="plotBA"></div>
+        </div>
+        <div class="panel">
+          <div class="phead">Correlation A vs B</div>
+          <div class="plot" id="plotCorr"></div>
+        </div>
+        <div class="panel">
+          <div class="phead">
+            Difference map (A − B)
+            <span class="spacer"></span>
+            <span class="slicelbl" id="cmpSliceLbl"></span>
+            <input type="range" id="cmpSliceIdx" min="0" max="0" step="1" value="0">
+          </div>
+          <div class="plot" id="plotDiff"></div>
+        </div>
+        <div class="panel">
+          <div class="phead">Distributions overlaid</div>
+          <div class="plot" id="plotCmpHist"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ================= constants & theme ================= */
+const GAMMA = 42.577478518;               // MHz / T (proton)
+const C = {
+  page:"#0d0d0d", surface:"#1a1a19", ink:"#ffffff", ink2:"#c3c2b7", ink3:"#898781",
+  grid:"#2c2c2a", baseline:"#383835",
+  s1:"#3987e5", s2:"#199e70", s3:"#c98500", s6:"#e66767", mid:"#383835",
+  good:"#0ca30c", warn:"#fab219"
+};
+// sequential blue ramp (reference palette steps 100 -> 700), light = high field
+const BRAND_BLUE = [
+  [0.00,"#0d366b"],[0.17,"#104281"],[0.33,"#1c5cab"],[0.50,"#2a78d6"],
+  [0.67,"#5598e7"],[0.83,"#9ec5f4"],[1.00,"#cde2fb"]
+];
+// diverging blue <-> red with dark-neutral midpoint (for difference maps)
+const DIVERGE = [
+  [0.00,"#3987e5"],[0.25,"#2a5a95"],[0.50,"#383835"],[0.75,"#a54f4a"],[1.00,"#e66767"]
+];
+const PLOT_CFG = {displaylogo:false, responsive:true,
+  toImageButtonOptions:{format:"png", scale:2},
+  modeBarButtonsToRemove:["select2d","lasso2d","autoScale2d"]};
+
+function baseLayout(extra){
+  return Object.assign({
+    paper_bgcolor:C.surface, plot_bgcolor:C.surface,
+    font:{family:'system-ui,-apple-system,"Segoe UI",sans-serif', color:C.ink2, size:11.5},
+    margin:{l:52,r:14,t:8,b:40},
+    xaxis:{gridcolor:C.grid, zerolinecolor:C.baseline, linecolor:C.baseline, ticks:"outside", tickcolor:C.baseline},
+    yaxis:{gridcolor:C.grid, zerolinecolor:C.baseline, linecolor:C.baseline, ticks:"outside", tickcolor:C.baseline},
+    hoverlabel:{bgcolor:"#2a2a29", bordercolor:C.baseline, font:{color:C.ink, size:12}},
+    showlegend:false
+  }, extra||{});
+}
+function cscale(){ const v=document.getElementById("optCscale").value; return v==="brandblue"?BRAND_BLUE:v; }
+
+/* ================= state ================= */
+const state = {
+  datasets:[],            // {id,name,file,scanner,dsv,res,scan,pts:{x,y,z,B},stats}
+  activeId:null,
+  unit:"mT",
+  tab:"map",
+  sliceAxis:"z", sliceIdx:1e9,          // 1e9 -> clamps to the centre slice
+  cmpA:null, cmpB:null, cmpSliceIdx:1e9,
+  _uid:0
+};
+const $ = id=>document.getElementById(id);
+
+/* ================= parsing ================= */
+const NAME_RE = /^(.+?)[_-]DSV(\d+(?:\.\d+)?)[_-]RES(\d+(?:\.\d+)?)[_-]S(\d+)/i;
+
+function parseWorkbook(name, wb){
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+  if(!rows.length) throw new Error("empty sheet");
+  // locate header row: needs x, y, z columns (case-insensitive)
+  let hi=-1, cx=-1, cy=-1, cz=-1, cb=-1, ct=-1;
+  for(let r=0; r<Math.min(rows.length,20); r++){
+    const low = rows[r].map(v=>String(v==null?"":v).trim().toLowerCase());
+    const ix=low.indexOf("x"), iy=low.indexOf("y"), iz=low.indexOf("z");
+    if(ix>=0 && iy>=0 && iz>=0){
+      hi=r; cx=ix; cy=iy; cz=iz;
+      cb = low.indexOf("b");
+      if(cb<0) cb = low.findIndex(v=>v==="|b|"||v==="bz"||v==="b (t)"||v==="b0"||v==="field");
+      ct = low.findIndex(v=>v.includes("time"));
+      break;
+    }
+  }
+  if(hi<0) throw new Error("no x/y/z header row found");
+  if(cb<0) throw new Error("no B column found");
+  // strict numeric coercion: null/undefined/""/whitespace/labels -> NaN
+  // (blank cells come back as null OR "" depending on the writing library)
+  const num=v=>(v===null||v===undefined||(typeof v==="string"&&v.trim()===""))?NaN:Number(v);
+  const pts={x:[],y:[],z:[],B:[],t:[]};   // row order = robot acquisition order
+  for(let r=hi+1; r<rows.length; r++){
+    const row=rows[r];
+    const x=num(row[cx]), y=num(row[cy]), z=num(row[cz]), B=num(row[cb]);
+    if([x,y,z,B].every(Number.isFinite)){
+      // footer rows ("maximum", "ppm", "2.13 MHz"...) fail the numeric test and are skipped
+      pts.x.push(x); pts.y.push(y); pts.z.push(z); pts.B.push(B);
+      pts.t.push(ct>=0 && row[ct]!=null ? String(row[ct]) : "");
+    }
+  }
+  if(pts.B.length<4) throw new Error("fewer than 4 valid measurement rows");
+  return pts;
+}
+
+function addDataset(name, wb){
+  const pts = parseWorkbook(name, wb);
+  const m = name.replace(/\.(xlsx|xls)$/i,"").match(NAME_RE);
+  const rmax = Math.max(...pts.x.map((_,i)=>Math.hypot(pts.x[i],pts.y[i],pts.z[i])));
+  const ds = {
+    id:"ds"+(++state._uid),
+    file:name,
+    scanner: m? m[1].toUpperCase() : name.replace(/\.(xlsx|xls)$/i,""),
+    dsv: m? +m[2] : Math.round(2*rmax),
+    res: m? +m[3] : estimateRes(pts),
+    scan: m? +m[4] : 1,
+    named: !!m,
+    pts
+  };
+  ds.stats = computeStats(pts.B);
+  ds.name = `${ds.scanner} · S${String(ds.scan).padStart(2,"0")}`;
+  // replace exact same file if re-dropped
+  const old = state.datasets.findIndex(d=>d.file===name);
+  if(old>=0) state.datasets.splice(old,1,ds); else state.datasets.push(ds);
+  state.activeId = ds.id;
+  return ds;
+}
+function estimateRes(pts){
+  const uz=[...new Set(pts.z)].sort((a,b)=>a-b);
+  let best=Infinity;
+  for(let i=1;i<uz.length;i++){const d=uz[i]-uz[i-1]; if(d>1e-6&&d<best)best=d;}
+  return Number.isFinite(best)? +best.toFixed(2) : 1;
+}
+
+/* ================= statistics ================= */
+function computeStats(B){
+  const n=B.length;
+  const mean=B.reduce((a,b)=>a+b,0)/n;
+  let m2=0,m3=0,m4=0,min=Infinity,max=-Infinity;
+  for(const v of B){
+    const d=v-mean; m2+=d*d; m3+=d*d*d; m4+=d*d*d*d;
+    if(v<min)min=v; if(v>max)max=v;
+  }
+  const varS=m2/(n-1), sd=Math.sqrt(varS);
+  const sorted=[...B].sort((a,b)=>a-b);
+  const q=p=>{const i=(n-1)*p, lo=Math.floor(i); return sorted[lo]+(sorted[Math.min(lo+1,n-1)]-sorted[lo])*(i-lo);};
+  return {
+    n, mean, sd, min, max, pp:max-min,
+    median:q(.5), iqr:q(.75)-q(.25),
+    ppmPP:(max-min)/mean*1e6,
+    ppmRMS:sd/Math.abs(mean)*1e6,
+    skew: m3/n/Math.pow(m2/n,1.5),
+    kurt: m4/n/Math.pow(m2/n,2)-3,
+    larmor: mean*GAMMA
+  };
+}
+function pearson(a,b){
+  const n=a.length, ma=a.reduce((x,y)=>x+y,0)/n, mb=b.reduce((x,y)=>x+y,0)/n;
+  let sa=0,sb=0,sab=0;
+  for(let i=0;i<n;i++){const da=a[i]-ma,db=b[i]-mb; sa+=da*da; sb+=db*db; sab+=da*db;}
+  return sab/Math.sqrt(sa*sb);
+}
+
+/* ================= units ================= */
+const UNIT_LBL={mT:"mT",uT:"µT",ppm:"ppm",MHz:"MHz"};
+function conv(vT, meanT){       // Tesla -> display units
+  switch(state.unit){
+    case "mT": return vT*1e3;
+    case "uT": return vT*1e6;
+    case "ppm": return (vT/meanT-1)*1e6;
+    case "MHz": return vT*GAMMA;
+  }
+}
+function convArr(arr, meanT){ return arr.map(v=>conv(v,meanT)); }
+function fmt(v, digits){
+  if(!Number.isFinite(v)) return "–";
+  if(digits!==undefined) return v.toLocaleString("en-US",{maximumFractionDigits:digits,minimumFractionDigits:0});
+  const a=Math.abs(v);
+  const d = a>=1000?0 : a>=100?1 : a>=10?2 : a>=1?3 : 4;
+  return v.toLocaleString("en-US",{maximumFractionDigits:d});
+}
+function unitDigits(){ return state.unit==="ppm"?0 : state.unit==="uT"?0 : state.unit==="MHz"?4 : 3; }
+
+/* ================= interpolation (IDW) ================= */
+function idwGrid(px, py, vals, gx, gy, maskDist){
+  // returns matrix [gy.length][gx.length]; null where nearest pt > maskDist
+  const P=2, n=px.length, Z=[];
+  for(let j=0;j<gy.length;j++){
+    const row=new Array(gx.length).fill(null);
+    for(let i=0;i<gx.length;i++){
+      let wsum=0, vsum=0, dmin=Infinity;
+      for(let k=0;k<n;k++){
+        const dx=gx[i]-px[k], dy=gy[j]-py[k];
+        const d2=dx*dx+dy*dy;
+        if(d2<dmin) dmin=d2;
+        if(d2<1e-9){ vsum=vals[k]; wsum=1; dmin=0; break; }
+        const w=1/Math.pow(d2,P/2); wsum+=w; vsum+=w*vals[k];
+      }
+      if(maskDist==null || Math.sqrt(dmin)<=maskDist) row[i]= (dmin===0? vsum : vsum/wsum);
+    }
+    Z.push(row);
+  }
+  return Z;
+}
+function linspace(a,b,n){ const o=[]; for(let i=0;i<n;i++)o.push(a+(b-a)*i/(n-1)); return o; }
+
+/* ================= slices ================= */
+const AXES={x:["y","z"], y:["x","z"], z:["x","y"]};
+function sliceValues(ds, axis){
+  const vals=[...new Set(ds.pts[axis].map(v=>+v.toFixed(3)))].sort((a,b)=>a-b);
+  // merge values closer than res/3 (staggered robot grids)
+  const tol=Math.max(ds.res/2.5, 0.5), out=[];
+  for(const v of vals){
+    if(out.length && Math.abs(v-out[out.length-1].v)<=tol){
+      out[out.length-1].members.push(v);
+      out[out.length-1].v = out[out.length-1].members.reduce((a,b)=>a+b,0)/out[out.length-1].members.length;
+    } else out.push({v, members:[v]});
+  }
+  return out.map(o=>o.v);
+}
+function slicePoints(ds, axis, val){
+  const tol=Math.max(ds.res/2, 0.75);
+  const [a1,a2]=AXES[axis], out={u:[],v:[],B:[],idx:[]};
+  for(let i=0;i<ds.pts.B.length;i++){
+    if(Math.abs(ds.pts[axis][i]-val)<=tol){
+      out.u.push(ds.pts[a1][i]); out.v.push(ds.pts[a2][i]); out.B.push(ds.pts.B[i]); out.idx.push(i);
+    }
+  }
+  return out;
+}
+
+/* ================= color range with clip ================= */
+function colorRange(valsDisp){
+  const clip=+$("optClip").value;
+  const s=[...valsDisp].sort((a,b)=>a-b), n=s.length;
+  const lo=s[Math.floor((n-1)*clip/100)], hi=s[Math.ceil((n-1)*(1-clip/100))];
+  return [lo,hi];
+}
+
+/* ================= renders: field map tab ================= */
+function active(){ return state.datasets.find(d=>d.id===state.activeId) || null; }
+
+function renderTiles(ds){
+  const el=$("tiles");
+  if(!ds){el.innerHTML="";return;}
+  const s=ds.stats;
+  const t=(v,u,l,hl)=>`<div class="tile${hl?" hl":""}"><div class="v">${v}<small>${u}</small></div><div class="l">${l}</div></div>`;
+  el.innerHTML =
+    t(fmt(s.mean*1e3,3),"mT","Mean B₀",true)+
+    t(fmt(s.larmor,4),"MHz","Larmor ¹H")+
+    t(fmt(s.ppmPP,0),"ppm","Homogeneity (p–p)")+
+    t(fmt(s.ppmRMS,0),"ppm","RMS inhomogeneity")+
+    t(fmt(s.sd*1e6,1),"µT","SD")+
+    t(`${s.n}`,"pts",`DSV ${ds.dsv} mm · ${ds.res} mm grid`);
+}
+
+function sphereTraces(r){
+  const tr=[], NP=40;
+  const circ=(fx,fy,fz)=>{
+    const x=[],y=[],z=[];
+    for(let i=0;i<=NP;i++){const a=2*Math.PI*i/NP; x.push(fx(a)); y.push(fy(a)); z.push(fz(a));}
+    return {type:"scatter3d",mode:"lines",x,y,z,line:{color:"rgba(137,135,129,0.5)",width:1.5},
+            hoverinfo:"skip",showlegend:false};
+  };
+  tr.push(circ(a=>r*Math.cos(a), a=>r*Math.sin(a), ()=>0));
+  tr.push(circ(a=>r*Math.cos(a), ()=>0, a=>r*Math.sin(a)));
+  tr.push(circ(()=>0, a=>r*Math.cos(a), a=>r*Math.sin(a)));
+  for(const zc of [-r*0.5, r*0.5]){
+    const rc=Math.sqrt(r*r-zc*zc);
+    tr.push(circ(a=>rc*Math.cos(a), a=>rc*Math.sin(a), ()=>zc));
+  }
+  return tr;
+}
+
+/* --- 2D slice position shown in the 3D view (subtle plane + rim ring) --- */
+let planeInfo=null;   // trace indices of the plane/ring inside plot3d, or null
+function currentSliceVal(ds){
+  const svals=sliceValues(ds,state.sliceAxis);
+  if(state.sliceIdx>svals.length-1) state.sliceIdx=Math.floor(svals.length/2);
+  return svals[state.sliceIdx];
+}
+function slicePlaneGeo(ds){
+  const ax=state.sliceAxis, v=currentSliceVal(ds);
+  const r=ds.dsv/2+3, a=-r, b=r;
+  const mk=(X,Y,Z)=>({type:"surface",x:X,y:Y,z:Z,
+    surfacecolor:[[0,0],[0,0]], colorscale:[[0,"#c3c2b7"],[1,"#c3c2b7"]],
+    showscale:false, opacity:0.10, hoverinfo:"skip",
+    contours:{x:{highlight:false},y:{highlight:false},z:{highlight:false}}});
+  let plane;
+  if(ax==="z")      plane=mk([[a,b],[a,b]], [[a,a],[b,b]], [[v,v],[v,v]]);
+  else if(ax==="y") plane=mk([[a,b],[a,b]], [[v,v],[v,v]], [[a,a],[b,b]]);
+  else              plane=mk([[v,v],[v,v]], [[a,b],[a,b]], [[a,a],[b,b]]);
+  // ring where the plane cuts the DSV sphere (radius shrinks toward the poles)
+  const R=ds.dsv/2, rc=Math.sqrt(Math.max(R*R-v*v,0));
+  const xs=[],ys=[],zs=[],NP=64;
+  for(let i=0;i<=NP;i++){
+    const t=2*Math.PI*i/NP, c1=rc*Math.cos(t), c2=rc*Math.sin(t);
+    if(ax==="z"){xs.push(c1);ys.push(c2);zs.push(v);}
+    else if(ax==="y"){xs.push(c1);ys.push(v);zs.push(c2);}
+    else{xs.push(v);ys.push(c1);zs.push(c2);}
+  }
+  const ring={type:"scatter3d",mode:"lines",x:xs,y:ys,z:zs,
+    line:{color:"rgba(57,135,229,0.6)",width:3},hoverinfo:"skip",showlegend:false};
+  return {plane,ring};
+}
+function updateSlicePlane3d(ds){
+  const el=$("plot3d");
+  if(!ds || !$("optSlice3d").checked) return;
+  if(planeInfo==null || !el.data){ render3d(ds); return; }
+  const g=slicePlaneGeo(ds);   // restyle in place: smooth, keeps the camera
+  Plotly.restyle(el,
+    {x:[g.plane.x,g.ring.x], y:[g.plane.y,g.ring.y], z:[g.plane.z,g.ring.z]},
+    [planeInfo.plane, planeInfo.ring]);
+}
+
+function render3d(ds){
+  const el=$("plot3d");
+  planeInfo=null;
+  if(!ds){Plotly.purge(el);return;}
+  const disp=convArr(ds.pts.B, ds.stats.mean);
+  const [cmin,cmax]=colorRange(disp);
+  const mode=$("opt3d").value;
+  const traces=[];
+  const cbar={title:{text:UNIT_LBL[state.unit],side:"right"},thickness:12,len:.75,
+              tickfont:{color:C.ink3,size:10},outlinewidth:0};
+  if(mode==="points"){
+    traces.push({
+      type:"scatter3d", mode:"markers",
+      x:ds.pts.x, y:ds.pts.y, z:ds.pts.z,
+      marker:{size:+$("optMarker").value, color:disp, colorscale:cscale(), cmin, cmax,
+              colorbar:cbar, opacity:.92, line:{width:0}},
+      customdata:disp,
+      hovertemplate:"x %{x} mm · y %{y} mm · z %{z} mm<br>B = %{customdata:.4f} "+UNIT_LBL[state.unit]+"<extra></extra>"
+    });
+    $("lbl3d").textContent = `${ds.stats.n} points`;
+  } else if(mode==="iso"){
+    const r=ds.dsv/2, N=18;
+    const g=linspace(-r,r,N), X=[],Y=[],Z=[],V=[];
+    // 3D IDW (unmasked -> smooth continuation past hull)
+    for(const zc of g) for(const yc of g) for(const xc of g){
+      let wsum=0,vsum=0;
+      for(let k=0;k<ds.pts.B.length;k++){
+        const dx=xc-ds.pts.x[k], dy=yc-ds.pts.y[k], dz=zc-ds.pts.z[k];
+        const d2=dx*dx+dy*dy+dz*dz;
+        if(d2<1e-9){vsum=ds.pts.B[k];wsum=1;break;}
+        const w=1/(d2*d2); wsum+=w; vsum+=w*ds.pts.B[k];
+      }
+      X.push(xc);Y.push(yc);Z.push(zc);V.push(conv(vsum/wsum, ds.stats.mean));
+    }
+    traces.push({
+      type:"isosurface", x:X,y:Y,z:Z,value:V,
+      isomin:cmin+(cmax-cmin)*.15, isomax:cmax-(cmax-cmin)*.15,
+      surface:{count:5}, opacity:.55, colorscale:cscale(), cmin, cmax,
+      caps:{x:{show:false},y:{show:false},z:{show:false}}, colorbar:cbar,
+      hovertemplate:"B ≈ %{value:.4f} "+UNIT_LBL[state.unit]+"<extra></extra>"
+    });
+    $("lbl3d").textContent="IDW-interpolated shells";
+  } else { // orthogonal slice planes
+    const r=ds.dsv/2, N=34, g=linspace(-r,r,N), mask=Math.max(ds.res*1.3,2);
+    const zeros=()=>g.map(()=>g.map(()=>0));      // 2D constant matrix
+    const rows =()=>g.map(gv=>g.map(()=>gv));     // 2D: value varies along rows (j index)
+    const cols =()=>g.map(()=>g.slice());         // 2D: value varies along columns (i index)
+    const mkPlane=(axis)=>{
+      const sp=slicePoints(ds, axis, 0);
+      if(sp.B.length<4) return null;
+      // Zm[j][i] is the field at (u=g[i], v=g[j]) in the slice plane, u/v = AXES[axis]
+      const Zm=idwGrid(sp.u, sp.v, sp.B.map(b=>conv(b,ds.stats.mean)), g, g, mask);
+      const common={type:"surface",surfacecolor:Zm,colorscale:cscale(),cmin,cmax,showscale:axis==="z",
+        colorbar:cbar,hoverinfo:"x+y+z"};
+      if(axis==="z") return Object.assign({x:cols(),y:rows(),z:zeros()},common); // u=x(i), v=y(j)
+      if(axis==="y") return Object.assign({x:cols(),y:zeros(),z:rows()},common); // u=x(i), v=z(j)
+      return Object.assign({x:zeros(),y:cols(),z:rows()},common);                // u=y(i), v=z(j)
+    };
+    for(const ax of ["z","y","x"]){const p=mkPlane(ax); if(p)traces.push(p);}
+    $("lbl3d").textContent="orthogonal centre planes";
+  }
+  if($("optTraj").checked){
+    // robot path: rows are stored in acquisition order
+    const n=ds.pts.B.length, order=ds.pts.B.map((_,i)=>i+1);
+    traces.push({
+      type:"scatter3d", mode:"lines",
+      x:ds.pts.x, y:ds.pts.y, z:ds.pts.z,
+      line:{color:"rgba(195,194,183,0.45)", width:2},
+      customdata:order, text:ds.pts.t,
+      hovertemplate:"point %{customdata}/"+n+"<br>%{text}<br>x %{x} · y %{y} · z %{z} mm<extra>path</extra>"
+    });
+    traces.push({
+      type:"scatter3d", mode:"markers+text",
+      x:[ds.pts.x[0],ds.pts.x[n-1]], y:[ds.pts.y[0],ds.pts.y[n-1]], z:[ds.pts.z[0],ds.pts.z[n-1]],
+      text:["start","end"], textposition:"top center",
+      textfont:{color:C.ink2, size:11},
+      marker:{size:6, color:[C.s2,C.s6], line:{width:1,color:"rgba(255,255,255,.6)"}},
+      hoverinfo:"skip"
+    });
+  }
+  if($("optSphere").checked) traces.push(...sphereTraces(ds.dsv/2));
+  if($("optSlice3d").checked){
+    const g=slicePlaneGeo(ds);
+    planeInfo={plane:traces.length, ring:traces.length+1};
+    traces.push(g.plane, g.ring);
+  }
+  const ax={gridcolor:C.grid, zerolinecolor:C.baseline, color:C.ink3,
+            backgroundcolor:C.surface, showbackground:true, title:{font:{size:11}}};
+  // keep the user's camera across re-renders (option toggles, unit changes…)
+  const prevCam = el._fullLayout && el._fullLayout.scene && el._fullLayout.scene.camera;
+  Plotly.react(el, traces, baseLayout({
+    margin:{l:0,r:0,t:0,b:0},
+    scene:{
+      xaxis:Object.assign({title:{text:"x (mm)"}},ax),
+      yaxis:Object.assign({title:{text:"y (mm)"}},ax),
+      zaxis:Object.assign({title:{text:"z (mm)"}},ax),
+      aspectmode:"data",
+      camera:prevCam || {eye:{x:1.5,y:-1.5,z:0.9}}
+    }
+  }), PLOT_CFG);
+}
+
+function render2d(ds){
+  const el=$("plot2d");
+  if(!ds){Plotly.purge(el);return;}
+  const axis=state.sliceAxis;
+  const svals=sliceValues(ds,axis);
+  const slider=$("sliceIdx");
+  slider.max=svals.length-1;
+  if(state.sliceIdx>svals.length-1) state.sliceIdx=Math.floor(svals.length/2);
+  slider.value=state.sliceIdx;
+  const sval=svals[state.sliceIdx];
+  $("sliceLbl").textContent=`${axis} = ${fmt(sval,1)} mm (${state.sliceIdx+1}/${svals.length})`;
+
+  const sp=slicePoints(ds,axis,sval);
+  const [a1,a2]=AXES[axis];
+  const dispAll=convArr(ds.pts.B, ds.stats.mean);
+  const [cmin,cmax]=colorRange(dispAll);
+  const dispSlice=sp.B.map(b=>conv(b,ds.stats.mean));
+  const mode=$("opt2d").value;
+  const traces=[];
+  const cbar={title:{text:UNIT_LBL[state.unit],side:"right"},thickness:12,len:.9,
+              tickfont:{color:C.ink3,size:10},outlinewidth:0};
+  const r=ds.dsv/2, N=48, g=linspace(-r-2,r+2,N), mask=Math.max(ds.res*1.35,2);
+  if(mode!=="scatter" && sp.B.length>=4){
+    const Zm=idwGrid(sp.u,sp.v,dispSlice,g,g,mask);
+    if(mode==="heat"){
+      traces.push({type:"heatmap",x:g,y:g,z:Zm,colorscale:cscale(),cmin,cmax,zsmooth:"best",
+        colorbar:cbar,hoverongaps:false,
+        hovertemplate:a1+" %{x:.1f} · "+a2+" %{y:.1f} mm<br>B = %{z:.4f} "+UNIT_LBL[state.unit]+"<extra></extra>"});
+    } else {
+      traces.push({type:"contour",x:g,y:g,z:Zm,colorscale:cscale(),zmin:cmin,zmax:cmax,
+        contours:{coloring:"fill",showlabels:true,labelfont:{size:9,color:C.ink}},
+        line:{color:"rgba(13,13,13,0.55)",width:0.7},colorbar:cbar,connectgaps:false,
+        hovertemplate:a1+" %{x:.1f} · "+a2+" %{y:.1f} mm<br>B = %{z:.4f} "+UNIT_LBL[state.unit]+"<extra></extra>"});
+    }
+  }
+  if($("optTraj2d").checked && sp.B.length>=2){
+    // robot path within this slice: sp.idx is ascending = acquisition order
+    const n=ds.pts.B.length, last=sp.u.length-1;
+    traces.push({
+      type:"scatter", mode:"lines",
+      x:sp.u, y:sp.v,
+      line:{color:C.s3, width:1.6},
+      customdata:sp.idx.map((i,k)=>[i+1, ds.pts.t[i]||"–"]),
+      hovertemplate:"point %{customdata[0]}/"+n+"<br>%{customdata[1]}<br>"+
+        a1+" %{x} · "+a2+" %{y} mm<extra>path</extra>"
+    });
+    traces.push({
+      type:"scatter", mode:"markers+text",
+      x:[sp.u[0],sp.u[last]], y:[sp.v[0],sp.v[last]],
+      text:["start","end"], textposition:"top center",
+      textfont:{color:[C.s2,C.s6], size:11},
+      marker:{size:9, color:[C.s2,C.s6], line:{width:1,color:"rgba(255,255,255,.7)"}},
+      hoverinfo:"skip"
+    });
+  }
+  if(mode==="scatter" || $("optPts2d").checked){
+    traces.push({type:"scatter",mode:"markers",x:sp.u,y:sp.v,
+      marker:{size:mode==="scatter"?13:6, color:dispSlice, colorscale:cscale(), cmin, cmax,
+        showscale:mode==="scatter", colorbar:cbar,
+        line:{width:1,color:mode==="scatter"?"rgba(13,13,13,.4)":"rgba(255,255,255,.55)"}},
+      hovertemplate:a1+" %{x} · "+a2+" %{y} mm<br>B = %{marker.color:.4f} "+UNIT_LBL[state.unit]+"<extra></extra>"});
+  }
+  Plotly.react(el, traces, baseLayout({
+    xaxis:{title:{text:a1+" (mm)"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline,scaleanchor:"y",constrain:"domain"},
+    yaxis:{title:{text:a2+" (mm)"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline,constrain:"domain"},
+    margin:{l:52,r:8,t:6,b:42}
+  }), PLOT_CFG);
+  if(state.tab==="map") updateSlicePlane3d(ds);   // keep the 3D plane in sync
+}
+
+function histBins(vals){
+  const n=vals.length, s=[...vals].sort((a,b)=>a-b);
+  const nb=Math.max(14, Math.min(60, Math.round(Math.sqrt(n)*1.6)));
+  const lo=s[0], hi=s[n-1]||lo+1;
+  const w=(hi-lo)/nb || 1;
+  const centers=[], counts=new Array(nb).fill(0);
+  for(let i=0;i<nb;i++) centers.push(lo+w*(i+.5));
+  for(const v of vals){ let k=Math.floor((v-lo)/w); if(k>=nb)k=nb-1; if(k<0)k=0; counts[k]++; }
+  return {centers, counts, w, lo, hi};
+}
+
+function renderHist(ds){
+  const el=$("plotHist");
+  if(!ds){Plotly.purge(el);return;}
+  const disp=convArr(ds.pts.B, ds.stats.mean);
+  const mu=disp.reduce((a,b)=>a+b,0)/disp.length;
+  const sd=Math.sqrt(disp.reduce((a,b)=>a+(b-mu)*(b-mu),0)/(disp.length-1));
+  const {centers,counts,w,lo,hi}=histBins(disp);
+  const traces=[{
+    type:"bar", x:centers, y:counts, width:w*0.92,
+    marker:{color:"rgba(57,135,229,0.62)", line:{width:0}},
+    hovertemplate:"B %{x:.4f} "+UNIT_LBL[state.unit]+"<br>%{y} points<extra></extra>", name:"measured"
+  }];
+  if($("optGauss").checked && sd>0){
+    const gx=linspace(lo-2*sd, hi+2*sd, 120);
+    const gy=gx.map(x=> ds.stats.n*w/(sd*Math.sqrt(2*Math.PI))*Math.exp(-0.5*((x-mu)/sd)**2));
+    traces.push({type:"scatter",mode:"lines",x:gx,y:gy,
+      line:{color:C.s3,width:2}, name:"normal fit",
+      hovertemplate:"fit %{y:.1f}<extra></extra>"});
+  }
+  $("gaussLbl").textContent =
+    `μ ${fmt(mu,unitDigits())} · σ ${fmt(sd,unitDigits())} ${UNIT_LBL[state.unit]} · skew ${fmt(ds.stats.skew,2)} · kurt ${fmt(ds.stats.kurt,2)}`;
+  Plotly.react(el, traces, baseLayout({
+    xaxis:{title:{text:"B ("+UNIT_LBL[state.unit]+")"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    yaxis:{title:{text:"count"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    margin:{l:52,r:10,t:8,b:42},
+    showlegend:$("optGauss").checked && sd>0,
+    legend:{orientation:"h",x:1,xanchor:"right",y:1.08,font:{size:10.5},bgcolor:"rgba(0,0,0,0)"},
+    shapes:[{type:"line",x0:mu,x1:mu,y0:0,y1:1,yref:"paper",
+             line:{color:C.ink3,width:1,dash:"dot"}}],
+    annotations:[{x:mu,y:1.02,yref:"paper",text:"μ",showarrow:false,font:{color:C.ink3,size:10}}]
+  }), PLOT_CFG);
+}
+
+/* ================= renders: statistics tab ================= */
+function renderStatTable(){
+  const tbl=$("statTable");
+  if(!state.datasets.length){tbl.innerHTML="";return;}
+  const cols=[
+    ["Dataset",d=>d.name,"nm"],
+    ["File",d=>d.file],
+    ["DSV mm",d=>d.dsv],
+    ["Res mm",d=>d.res],
+    ["N",d=>d.stats.n],
+    ["Mean mT",d=>fmt(d.stats.mean*1e3,3)],
+    ["Larmor MHz",d=>fmt(d.stats.larmor,4)],
+    ["SD µT",d=>fmt(d.stats.sd*1e6,1)],
+    ["Min mT",d=>fmt(d.stats.min*1e3,3)],
+    ["Max mT",d=>fmt(d.stats.max*1e3,3)],
+    ["P–P µT",d=>fmt(d.stats.pp*1e6,0)],
+    ["Median mT",d=>fmt(d.stats.median*1e3,3)],
+    ["IQR µT",d=>fmt(d.stats.iqr*1e6,1)],
+    ["Homog. ppm (p–p)",d=>fmt(d.stats.ppmPP,0)],
+    ["RMS ppm",d=>fmt(d.stats.ppmRMS,0)],
+    ["Skew",d=>fmt(d.stats.skew,2)],
+    ["Kurtosis",d=>fmt(d.stats.kurt,2)]
+  ];
+  let html="<thead><tr>"+cols.map(c=>`<th>${c[0]}</th>`).join("")+"</tr></thead><tbody>";
+  for(const d of state.datasets){
+    html+=`<tr data-id="${d.id}" class="${d.id===state.activeId?"sel":""}">`+
+      cols.map(c=>`<td class="${c[2]||""}">${c[1](d)}</td>`).join("")+"</tr>";
+  }
+  tbl.innerHTML=html+"</tbody>";
+  tbl.querySelectorAll("tr[data-id]").forEach(tr=>{
+    tr.onclick=()=>{state.activeId=tr.dataset.id; refreshAll();};
+  });
+}
+function renderHom(){
+  const el=$("plotHom"), ds=active();
+  if(!ds){Plotly.purge(el);$("homName").textContent="";return;}
+  $("homName").textContent=ds.name;
+  const r=[], n=ds.stats.n;
+  const rad=ds.pts.x.map((_,i)=>Math.hypot(ds.pts.x[i],ds.pts.y[i],ds.pts.z[i]));
+  const rmax=Math.max(...rad);
+  const steps=linspace(rmax*0.25, rmax, 14);
+  const dsvArr=[], ppmArr=[], nArr=[];
+  for(const rr of steps){
+    const sel=[];
+    for(let i=0;i<n;i++) if(rad[i]<=rr+1e-9) sel.push(ds.pts.B[i]);
+    if(sel.length<5) continue;
+    const mn=sel.reduce((a,b)=>a+b,0)/sel.length;
+    const mx=Math.max(...sel), mi=Math.min(...sel);
+    dsvArr.push(2*rr); ppmArr.push((mx-mi)/mn*1e6); nArr.push(sel.length);
+  }
+  Plotly.react(el,[{
+    type:"scatter",mode:"lines+markers",x:dsvArr,y:ppmArr,
+    line:{color:C.s1,width:2}, marker:{size:7,color:C.s1},
+    customdata:nArr,
+    hovertemplate:"DSV %{x:.0f} mm<br>%{y:.0f} ppm p–p · %{customdata} pts<extra></extra>"
+  }], baseLayout({
+    xaxis:{title:{text:"DSV diameter (mm)"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    yaxis:{title:{text:"peak-to-peak inhomogeneity (ppm)"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline,rangemode:"tozero"},
+    margin:{l:60,r:12,t:8,b:42}
+  }), PLOT_CFG);
+}
+function renderBox(){
+  const el=$("plotBox");
+  if(!state.datasets.length){Plotly.purge(el);return;}
+  const traces=state.datasets.map(d=>({
+    type:"box", name:d.name,
+    y:d.pts.B.map(b=>(b/d.stats.mean-1)*1e6),
+    marker:{color:d.id===state.activeId?C.s1:C.ink3, size:2.5},
+    line:{width:1.6, color:d.id===state.activeId?C.s1:C.ink3},
+    fillcolor:"rgba(0,0,0,0)",
+    boxpoints:"outliers",
+    hoverlabel:{namelength:-1}
+  }));
+  Plotly.react(el,traces, baseLayout({
+    xaxis:{tickangle:-28,gridcolor:"rgba(0,0,0,0)",linecolor:C.baseline,tickfont:{size:10}},
+    yaxis:{title:{text:"deviation from dataset mean (ppm)"},gridcolor:C.grid,zerolinecolor:C.baseline,linecolor:C.baseline},
+    margin:{l:60,r:12,t:8,b:74}
+  }), PLOT_CFG);
+}
+
+/* ================= compare tab ================= */
+function matchedPoints(A,B){
+  const key=(x,y,z)=>x.toFixed(2)+"|"+y.toFixed(2)+"|"+z.toFixed(2);
+  const map=new Map();
+  for(let i=0;i<A.pts.B.length;i++) map.set(key(A.pts.x[i],A.pts.y[i],A.pts.z[i]), A.pts.B[i]);
+  const out={x:[],y:[],z:[],a:[],b:[]};
+  for(let i=0;i<B.pts.B.length;i++){
+    const k=key(B.pts.x[i],B.pts.y[i],B.pts.z[i]);
+    if(map.has(k)){
+      out.x.push(B.pts.x[i]); out.y.push(B.pts.y[i]); out.z.push(B.pts.z[i]);
+      out.a.push(map.get(k)); out.b.push(B.pts.B[i]);
+    }
+  }
+  return out;
+}
+function fillCmpSelectors(){
+  const mk=(sel,cur)=>{
+    sel.innerHTML=state.datasets.map(d=>`<option value="${d.id}">${d.file}</option>`).join("");
+    if(cur && state.datasets.some(d=>d.id===cur)) sel.value=cur;
+  };
+  mk($("cmpA"),state.cmpA); mk($("cmpB"),state.cmpB);
+  state.cmpA=$("cmpA").value||null; state.cmpB=$("cmpB").value||null;
+}
+function findRescanPair(){
+  for(const a of state.datasets) for(const b of state.datasets){
+    if(a===b) continue;
+    if(a.scanner===b.scanner && a.dsv===b.dsv && a.res===b.res && a.scan<b.scan) return [a,b];
+  }
+  return null;
+}
+function renderCompare(){
+  const A=state.datasets.find(d=>d.id===state.cmpA);
+  const B=state.datasets.find(d=>d.id===state.cmpB);
+  const stEl=$("cmpStats");
+  const plots=["plotBA","plotCorr","plotDiff","plotCmpHist"];
+  if(!A||!B||A===B){
+    stEl.innerHTML=`<div class="cs"><div class="v" style="color:var(--ink-3)">–</div><div class="l">select two different scans</div></div>`;
+    plots.forEach(p=>Plotly.purge($(p)));
+    return;
+  }
+  const M=matchedPoints(A,B);
+  const meanPool=(A.stats.mean+B.stats.mean)/2;
+  if(M.a.length<4){
+    stEl.innerHTML=`<div class="cs"><div class="v" style="color:var(--s6)">${M.a.length}</div><div class="l">matched pts — grids differ</div></div>`;
+    plots.forEach(p=>Plotly.purge($(p)));
+    // still show overlaid distributions
+    renderCmpHist(A,B,meanPool);
+    return;
+  }
+  const diff=M.a.map((v,i)=>v-M.b[i]);                       // Tesla
+  const nd=diff.length;
+  const bias=diff.reduce((a,b)=>a+b,0)/nd;
+  const sdd=Math.sqrt(diff.reduce((a,b)=>a+(b-bias)*(b-bias),0)/(nd-1));
+  const rmsd=Math.sqrt(diff.reduce((a,b)=>a+b*b,0)/nd);
+  const loaLo=bias-1.96*sdd, loaHi=bias+1.96*sdd;
+  const r=pearson(M.a,M.b);
+  const cs=(v,l,color)=>`<div class="cs"><div class="v"${color?` style="color:${color}"`:""}>${v}</div><div class="l">${l}</div></div>`;
+  stEl.innerHTML =
+    cs(nd,"matched pts")+
+    cs(fmt(bias*1e6,1)+" µT","bias A−B", Math.abs(bias/meanPool*1e6)>100?C.warn:C.good)+
+    cs(fmt(bias/meanPool*1e6,1)+" ppm","relative bias")+
+    cs(fmt(sdd*1e6,1)+" µT","SD of diff")+
+    cs(fmt(rmsd/meanPool*1e6,1)+" ppm","RMSD")+
+    cs("±"+fmt(1.96*sdd*1e6,1)+" µT","95% LoA")+
+    cs(r.toFixed(5),"Pearson r");
+
+  const dU = state.unit==="ppm" ? diff.map(d=>d/meanPool*1e6) : diff.map(d=>d*1e6);
+  const dLbl = state.unit==="ppm" ? "ppm" : "µT";
+  const dBias = state.unit==="ppm"? bias/meanPool*1e6 : bias*1e6;
+  const dLoA = state.unit==="ppm"? 1.96*sdd/meanPool*1e6 : 1.96*sdd*1e6;
+
+  /* Bland–Altman */
+  const meansDisp=M.a.map((v,i)=>conv((v+M.b[i])/2, meanPool));
+  Plotly.react($("plotBA"),[{
+    type:"scatter",mode:"markers",x:meansDisp,y:dU,
+    marker:{size:6,color:"rgba(57,135,229,0.65)",line:{width:0}},
+    hovertemplate:"mean %{x:.4f} "+UNIT_LBL[state.unit]+"<br>diff %{y:.2f} "+dLbl+"<extra></extra>"
+  }], baseLayout({
+    xaxis:{title:{text:"mean of A & B ("+UNIT_LBL[state.unit]+")"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    yaxis:{title:{text:"difference A − B ("+dLbl+")"},gridcolor:C.grid,zerolinecolor:C.baseline,linecolor:C.baseline},
+    margin:{l:58,r:12,t:10,b:42},
+    shapes:[
+      {type:"line",xref:"paper",x0:0,x1:1,y0:dBias,y1:dBias,line:{color:C.s3,width:1.6}},
+      {type:"line",xref:"paper",x0:0,x1:1,y0:dBias+dLoA,y1:dBias+dLoA,line:{color:C.ink3,width:1,dash:"dash"}},
+      {type:"line",xref:"paper",x0:0,x1:1,y0:dBias-dLoA,y1:dBias-dLoA,line:{color:C.ink3,width:1,dash:"dash"}}
+    ],
+    annotations:[
+      {xref:"paper",x:1,y:dBias,text:"bias "+fmt(dBias,2),showarrow:false,xanchor:"right",yanchor:"bottom",font:{color:C.s3,size:10}},
+      {xref:"paper",x:1,y:dBias+dLoA,text:"+1.96 SD",showarrow:false,xanchor:"right",yanchor:"bottom",font:{color:C.ink3,size:9.5}},
+      {xref:"paper",x:1,y:dBias-dLoA,text:"−1.96 SD",showarrow:false,xanchor:"right",yanchor:"top",font:{color:C.ink3,size:9.5}}
+    ]
+  }), PLOT_CFG);
+
+  /* correlation */
+  const aD=M.a.map(v=>conv(v,meanPool)), bD=M.b.map(v=>conv(v,meanPool));
+  const lo=Math.min(...aD,...bD), hi=Math.max(...aD,...bD);
+  Plotly.react($("plotCorr"),[
+    {type:"scatter",mode:"lines",x:[lo,hi],y:[lo,hi],line:{color:C.baseline,width:1.5,dash:"dot"},hoverinfo:"skip"},
+    {type:"scatter",mode:"markers",x:aD,y:bD,
+      marker:{size:6,color:"rgba(57,135,229,0.65)",line:{width:0}},
+      hovertemplate:"A %{x:.4f} · B %{y:.4f} "+UNIT_LBL[state.unit]+"<extra></extra>"}
+  ], baseLayout({
+    xaxis:{title:{text:"A — "+A.name+" ("+UNIT_LBL[state.unit]+")"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    yaxis:{title:{text:"B — "+B.name+" ("+UNIT_LBL[state.unit]+")"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    margin:{l:58,r:12,t:10,b:42},
+    annotations:[{xref:"paper",yref:"paper",x:.03,y:.97,xanchor:"left",
+      text:"r = "+r.toFixed(5),showarrow:false,font:{color:C.ink,size:12},
+      bgcolor:"rgba(42,42,41,.85)",borderpad:5}]
+  }), PLOT_CFG);
+
+  /* difference slice map (diverging, symmetric around 0) */
+  const zvals=[...new Set(M.z.map(v=>+v.toFixed(1)))].sort((a,b)=>a-b);
+  const zSlider=$("cmpSliceIdx");
+  zSlider.max=zvals.length-1;
+  if(state.cmpSliceIdx>zvals.length-1) state.cmpSliceIdx=Math.floor(zvals.length/2);
+  zSlider.value=state.cmpSliceIdx;
+  const zc=zvals[state.cmpSliceIdx];
+  $("cmpSliceLbl").textContent=`z = ${fmt(zc,1)} mm (${state.cmpSliceIdx+1}/${zvals.length})`;
+  const su=[],sv=[],sd2=[];
+  const tol=Math.max(A.res/2,0.75);
+  for(let i=0;i<M.z.length;i++) if(Math.abs(M.z[i]-zc)<=tol){
+    su.push(M.x[i]); sv.push(M.y[i]);
+    sd2.push(state.unit==="ppm"? diff[i]/meanPool*1e6 : diff[i]*1e6);
+  }
+  const dmax=Math.max(...dU.map(Math.abs)) || 1;
+  const el=$("plotDiff");
+  if(su.length>=4){
+    const rr=A.dsv/2, g=linspace(-rr-2,rr+2,44), mask=Math.max(A.res*1.35,2);
+    const Zm=idwGrid(su,sv,sd2,g,g,mask);
+    Plotly.react(el,[{
+      type:"heatmap",x:g,y:g,z:Zm,colorscale:DIVERGE,zmin:-dmax,zmax:dmax,zsmooth:"best",
+      hoverongaps:false,
+      colorbar:{title:{text:"Δ "+dLbl,side:"right"},thickness:12,len:.9,tickfont:{color:C.ink3,size:10},outlinewidth:0},
+      hovertemplate:"x %{x:.1f} · y %{y:.1f} mm<br>Δ = %{z:.2f} "+dLbl+"<extra></extra>"
+    }], baseLayout({
+      xaxis:{title:{text:"x (mm)"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline,scaleanchor:"y",constrain:"domain"},
+      yaxis:{title:{text:"y (mm)"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline,constrain:"domain"},
+      margin:{l:52,r:8,t:6,b:42}
+    }), PLOT_CFG);
+  } else Plotly.purge(el);
+
+  renderCmpHist(A,B,meanPool);
+}
+function renderCmpHist(A,B,meanPool){
+  const aD=convArr(A.pts.B, state.unit==="ppm"?A.stats.mean:meanPool);
+  const bD=convArr(B.pts.B, state.unit==="ppm"?B.stats.mean:meanPool);
+  Plotly.react($("plotCmpHist"),[
+    {type:"histogram",x:aD,name:"A · "+A.name,opacity:.62,nbinsx:44,
+     marker:{color:C.s1,line:{width:0}},
+     hovertemplate:"%{x} "+UNIT_LBL[state.unit]+" · %{y} pts<extra>A</extra>"},
+    {type:"histogram",x:bD,name:"B · "+B.name,opacity:.62,nbinsx:44,
+     marker:{color:C.s2,line:{width:0}},
+     hovertemplate:"%{x} "+UNIT_LBL[state.unit]+" · %{y} pts<extra>B</extra>"}
+  ], baseLayout({
+    barmode:"overlay",
+    showlegend:true,
+    legend:{orientation:"h",x:1,xanchor:"right",y:1.1,font:{size:10.5},bgcolor:"rgba(0,0,0,0)"},
+    xaxis:{title:{text:"B ("+UNIT_LBL[state.unit]+")"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    yaxis:{title:{text:"count"},gridcolor:C.grid,zeroline:false,linecolor:C.baseline},
+    margin:{l:52,r:10,t:12,b:42}
+  }), PLOT_CFG);
+}
+
+/* ================= sidebar dataset list ================= */
+function renderList(){
+  const el=$("dsList");
+  if(!state.datasets.length){el.innerHTML='<div class="empty">No datasets loaded yet</div>';return;}
+  const groups=new Map();
+  for(const d of state.datasets){
+    const k=d.scanner;
+    if(!groups.has(k)) groups.set(k,[]);
+    groups.get(k).push(d);
+  }
+  let html="";
+  for(const [scanner,arr] of groups){
+    arr.sort((a,b)=>a.dsv-b.dsv || a.res-b.res || a.scan-b.scan);
+    const hasPair=arr.some(a=>arr.some(b=>a!==b&&a.dsv===b.dsv&&a.res===b.res));
+    html+=`<div class="scannerGroup"><div class="gname">${scanner}${hasPair?'<span class="pairBadge">↻ rescan pair</span>':""}</div>`;
+    for(const d of arr){
+      html+=`<div class="dsItem ${d.id===state.activeId?"active":""}" data-id="${d.id}">
+        <span class="dot"></span>
+        <span class="nm"><span class="t">S${String(d.scan).padStart(2,"0")} · DSV ${d.dsv} · ${d.res} mm</span>
+        <span class="d">${d.stats.n} pts · ${fmt(d.stats.mean*1e3,2)} mT · ${fmt(d.stats.ppmPP,0)} ppm</span></span>
+        <button class="rm" title="remove">×</button></div>`;
+    }
+    html+="</div>";
+  }
+  el.innerHTML=html;
+  el.querySelectorAll(".dsItem").forEach(it=>{
+    it.onclick=e=>{
+      if(e.target.classList.contains("rm")){
+        const i=state.datasets.findIndex(d=>d.id===it.dataset.id);
+        if(i>=0) state.datasets.splice(i,1);
+        if(state.activeId===it.dataset.id) state.activeId=state.datasets.length?state.datasets[0].id:null;
+        if(state.cmpA===it.dataset.id) state.cmpA=null;
+        if(state.cmpB===it.dataset.id) state.cmpB=null;
+        refreshAll(); return;
+      }
+      state.activeId=it.dataset.id; refreshAll();
+    };
+  });
+}
+
+/* ================= refresh orchestration ================= */
+function refreshAll(){
+  const ds=active();
+  $("subTitle").textContent = ds
+    ? `${state.datasets.length} dataset${state.datasets.length>1?"s":""} loaded — viewing ${ds.file}`
+    : "drop .xlsx field maps to begin";
+  renderList();
+  $("gridMap").style.display = ds? "grid":"none";
+  $("tiles").style.display = ds? "grid":"none";
+  $("bigEmpty").style.display = ds? "none":"flex";
+  if(state.tab==="map" && ds){ renderTiles(ds); render3d(ds); render2d(ds); renderHist(ds); }
+  if(state.tab==="stats"){ renderStatTable(); renderHom(); renderBox(); }
+  if(state.tab==="cmp"){ fillCmpSelectors(); renderCompare(); }
+}
+
+/* ================= events ================= */
+function setTab(tab){
+  state.tab=tab;
+  document.querySelectorAll("#tabSeg button").forEach(x=>x.classList.toggle("on",x.dataset.tab===tab));
+  $("tabMap").classList.toggle("on",tab==="map");
+  $("tabStats").classList.toggle("on",tab==="stats");
+  $("tabCmp").classList.toggle("on",tab==="cmp");
+  refreshAll();
+}
+$("tabSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(b) setTab(b.dataset.tab);
+});
+// deep link: index.html?tab=stats|cmp&traj (combine with ?demo)
+{
+  const q=new URLSearchParams(location.search);
+  const t=q.get("tab");
+  if(t==="stats"||t==="cmp") setTab(t);
+  if(q.has("traj")) $("optTraj").checked=true;
+  if(q.has("traj2d")) $("optTraj2d").checked=true;
+}
+$("unitSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b)return;
+  state.unit=b.dataset.u;
+  document.querySelectorAll("#unitSeg button").forEach(x=>x.classList.toggle("on",x===b));
+  refreshAll();
+});
+$("drop").onclick=()=>$("fileInput").click();
+$("drop").ondragover=e=>{e.preventDefault();$("drop").classList.add("over");};
+$("drop").ondragleave=()=>$("drop").classList.remove("over");
+$("drop").ondrop=e=>{
+  e.preventDefault();$("drop").classList.remove("over");
+  loadFiles([...e.dataTransfer.files]);
+};
+document.body.addEventListener("dragover",e=>e.preventDefault());
+document.body.addEventListener("drop",e=>{e.preventDefault(); if(e.target.closest("#drop"))return; loadFiles([...e.dataTransfer.files]);});
+$("fileInput").onchange=e=>{loadFiles([...e.target.files]); e.target.value="";};
+
+async function loadFiles(files){
+  const errs=[];
+  for(const f of files){
+    if(!/\.(xlsx|xls)$/i.test(f.name)) continue;
+    try{
+      const buf=await f.arrayBuffer();
+      addDataset(f.name, XLSX.read(buf,{type:"array"}));
+    }catch(err){ errs.push(`${f.name}: ${err.message}`); }
+  }
+  autoPickCompare();
+  refreshAll();
+  if(errs.length) alert("Some files could not be parsed:\n\n"+errs.join("\n"));
+}
+function autoPickCompare(){
+  if(state.cmpA && state.cmpB) return;
+  const pair=findRescanPair();
+  if(pair){ state.cmpA=pair[0].id; state.cmpB=pair[1].id; }
+}
+$("cmpA").onchange=e=>{state.cmpA=e.target.value; renderCompare();};
+$("cmpB").onchange=e=>{state.cmpB=e.target.value; renderCompare();};
+$("autoPair").onclick=()=>{
+  const pair=findRescanPair();
+  if(pair){ state.cmpA=pair[0].id; state.cmpB=pair[1].id; fillCmpSelectors(); renderCompare(); }
+  else alert("No rescan pair found.\nA pair = two files with the same scanner, DSV and RES but different S numbers.");
+};
+$("cmpSliceIdx").oninput=e=>{state.cmpSliceIdx=+e.target.value; renderCompare();};
+$("sliceAxis").onchange=e=>{state.sliceAxis=e.target.value; state.sliceIdx=1e9; render2d(active());};
+$("sliceIdx").oninput=e=>{state.sliceIdx=+e.target.value; render2d(active());};
+/* mouse wheel over the maps scrolls through slices (slider stays in sync) */
+$("plot2d").addEventListener("wheel",e=>{
+  const ds=active(); if(!ds) return;
+  e.preventDefault();
+  const nSlices=sliceValues(ds,state.sliceAxis).length;
+  const cur=Math.min(state.sliceIdx,nSlices-1);
+  const ni=Math.min(nSlices-1, Math.max(0, cur+(e.deltaY>0?1:-1)));
+  if(ni!==cur){ state.sliceIdx=ni; render2d(ds); }
+},{passive:false});
+$("plotDiff").addEventListener("wheel",e=>{
+  if(!state.cmpA||!state.cmpB||state.cmpA===state.cmpB) return;
+  e.preventDefault();
+  const max=+$("cmpSliceIdx").max;
+  const cur=Math.min(state.cmpSliceIdx,max);
+  const ni=Math.min(max, Math.max(0, cur+(e.deltaY>0?1:-1)));
+  if(ni!==cur){ state.cmpSliceIdx=ni; renderCompare(); }
+},{passive:false});
+["optCscale","opt3d","opt2d"].forEach(id=>$(id).onchange=()=>refreshAll());
+$("optClip").oninput=e=>{$("clipVal").textContent=`${e.target.value}–${100-e.target.value} %`; refreshAll();};
+$("optMarker").oninput=e=>{$("mkVal").textContent=e.target.value; render3d(active());};
+$("optSphere").onchange=()=>render3d(active());
+$("optSlice3d").onchange=()=>render3d(active());
+$("optTraj").onchange=()=>render3d(active());
+$("optTraj2d").onchange=()=>render2d(active());
+$("optGauss").onchange=()=>renderHist(active());
+$("optPts2d").onchange=()=>render2d(active());
+
+/* CSV export */
+$("csvBtn").onclick=()=>{
+  const head=["file","scanner","scan","dsv_mm","res_mm","n","mean_T","sd_T","min_T","max_T","pp_T",
+              "median_T","iqr_T","homogeneity_ppm_pp","rms_ppm","skew","excess_kurtosis","larmor_MHz"];
+  const rows=state.datasets.map(d=>{const s=d.stats;return [
+    d.file,d.scanner,d.scan,d.dsv,d.res,s.n,s.mean,s.sd,s.min,s.max,s.pp,
+    s.median,s.iqr,s.ppmPP.toFixed(1),s.ppmRMS.toFixed(1),s.skew.toFixed(3),s.kurt.toFixed(3),s.larmor.toFixed(5)
+  ].join(",");});
+  const blob=new Blob([head.join(",")+"\n"+rows.join("\n")],{type:"text/csv"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="fieldmap_statistics.csv"; a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* demo loader — works when served over http(s) (e.g. netlify), hidden on file:// */
+(async()=>{
+  try{
+    const r=await fetch("data/manifest.json");
+    if(!r.ok) return;
+    const list=await r.json();
+    const btn=$("demoBtn");
+    btn.style.display="block";
+    btn.onclick=async()=>{
+      btn.disabled=true; btn.textContent="Loading…";
+      for(const f of list){
+        try{
+          const resp=await fetch("data/"+f);
+          addDataset(f, XLSX.read(await resp.arrayBuffer(),{type:"array"}));
+        }catch(e){/* skip */}
+      }
+      autoPickCompare(); refreshAll();
+      btn.textContent="⚡ Load all sample data"; btn.disabled=false;
+    };
+    // open index.html?demo to auto-load every sample file
+    if(new URLSearchParams(location.search).has("demo")) btn.onclick();
+  }catch(e){/* file:// — no demo button */}
+})();
+
+window.addEventListener("resize",()=>{
+  document.querySelectorAll(".plot").forEach(p=>{
+    if(p.offsetParent && p._fullLayout) Plotly.Plots.resize(p);
+  });
+});
+refreshAll();
+</script>
+</body>
+</html>
