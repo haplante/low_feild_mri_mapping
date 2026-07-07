@@ -4,13 +4,19 @@ Interactive dashboard for visualising and analysing robot-acquired B₀ field ma
 of low-field MRI magnets — 2D slices, 3D volumes, homogeneity statistics and
 scan–rescan repeatability.
 
-**Open `index.html` in a browser and drop `.xlsx` field maps onto the left panel.**
-No install, no build step. (Plotly and SheetJS are loaded from CDNs, so an
-internet connection is needed the first time.)
+**Use it here: https://haplante.github.io/low_feild_mri_mapping/**
 
-To use the **⚡ Load all sample data** button you need the page served over
-HTTP rather than opened directly (browsers block local file fetches over
-`file://`). Two launcher scripts do this for you — see
+Drop your own `.xlsx` field maps onto the left panel, or click **⚡ Load all
+sample data** to explore with the bundled synthetic magnets. No install, no
+account, no build step — it runs entirely in your browser (Plotly and
+SheetJS are loaded from CDNs).
+
+### Running it locally instead
+
+You can also open `index.html` directly, but to use the **⚡ Load all sample
+data** button you need the page served over HTTP rather than opened as a
+local file (browsers block local file fetches over `file://`). Two launcher
+scripts do this for you — see
 [Running the dashboard](#running-the-dashboard) below.
 
 ## Repository layout
