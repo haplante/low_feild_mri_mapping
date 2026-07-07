@@ -23,13 +23,13 @@ scripts do this for you — see
 
 ```
 ├── index.html            ← the dashboard (open this)
-├── run_dashboard.bat     ← Windows launcher (serves + opens the dashboard)
-├── run_dashboard.sh      ← macOS/Linux launcher (same, via bash)
 ├── data/                 ← field-map Excel files (synthetic samples; real
 │                            scanner files are git-ignored, see .gitignore)
 │   └── manifest.json     ← file list used by the "Load all sample data" button
 ├── scripts/
 │   ├── generate_fake_fieldmaps.py   ← regenerates the synthetic samples
+│   ├── run_dashboard.bat            ← Windows launcher (serves + opens the dashboard)
+│   ├── run_dashboard.sh             ← macOS/Linux launcher (same, via bash)
 │   └── kill_old_servers.ps1         ← used by run_dashboard.bat to clear stale servers
 ├── old/                  ← previous notebook, dashboard and original file names
 └── netlify_correlation_dashboard/   ← unrelated earlier project (style reference)
@@ -37,14 +37,15 @@ scripts do this for you — see
 
 ## Running the dashboard
 
-**Windows** — double-click `run_dashboard.bat`. It closes any dashboard
-server left running from a previous session, starts `python -m http.server`
-in its own window, and opens the dashboard in your default browser.
+**Windows** — double-click `scripts/run_dashboard.bat`. It closes any
+dashboard server left running from a previous session, starts
+`python -m http.server` in its own window, and opens the dashboard in your
+default browser.
 
-**macOS / Linux** — run `./run_dashboard.sh` (or `bash run_dashboard.sh`) from
-a terminal in the repo folder. It frees port 8000 if something is already
-bound to it, starts `python3 -m http.server`, and opens the dashboard.
-Requires Python 3.
+**macOS / Linux** — run `./scripts/run_dashboard.sh` (or
+`bash scripts/run_dashboard.sh`) from the repo root. It frees port 8000 if
+something is already bound to it, starts `python3 -m http.server`, and opens
+the dashboard. Requires Python 3.
 
 Both scripts serve on `http://127.0.0.1:8000/index.html`. Close the server
 window/process (or `Ctrl+C`) when you're done.
@@ -106,8 +107,8 @@ Regenerate the synthetic set with:
 python scripts/generate_fake_fieldmaps.py   # needs numpy, pandas, openpyxl
 ```
 
-If the dashboard is served over HTTP (e.g. via `run_dashboard.bat` /
-`run_dashboard.sh`, or a Netlify deploy), a **⚡ Load all sample data**
+If the dashboard is served over HTTP (e.g. via `scripts/run_dashboard.bat` /
+`scripts/run_dashboard.sh`, or a Netlify deploy), a **⚡ Load all sample data**
 button appears that loads everything listed in `data/manifest.json` in one
 click. Over `file://` browsers block local fetches, so drop or browse the
 files instead.

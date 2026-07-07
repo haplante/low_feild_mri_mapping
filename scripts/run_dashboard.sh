@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 # Free port 8000 if a previous server is still bound to it
 lsof -ti:8000 | xargs -r kill -9 2>/dev/null

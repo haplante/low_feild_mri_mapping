@@ -1,8 +1,8 @@
 @echo off
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo Closing any previous dashboard server...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\kill_old_servers.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0kill_old_servers.ps1"
 
 REM Also free port 8000 in case something else is holding it
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do (
